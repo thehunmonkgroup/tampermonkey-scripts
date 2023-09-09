@@ -1,4 +1,3 @@
-# tampermonkey-scripts
-TamperMonkey scripts
+# TamperMonkey scripts
 
 https://www.tampermonkey.net
