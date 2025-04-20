@@ -1,88 +1,125 @@
 // ==UserScript==
-// @name         Accounting Date Helper
+// @name         Date Input Keyboard Shortcuts
 // @namespace    http://tampermonkey.net/
-// @version      0.1
-// @description  Provides keyboard shortcuts and auto copy for https://accounting.xylil.com
-// @author       Chad Phillips
+// @version      1.0
+// @description  Adjust date inputs using keyboard shortcuts
 // @match        https://accounting.xylil.com/*
-// @icon         https://www.google.com/s2/favicons?sz=64&domain=tampermonkey.net
 // @grant        none
 // ==/UserScript==
 
 (function() {
-  'use strict';
-  const handler = function(e) {
-    if (e.shiftKey && e.altKey) {
-      let currentDate = new Date(this.value);
-      switch (e.keyCode) {
-        case 37: // left arrow
-          this.value = adjustDate(currentDate, -1);
-          break;
-        case 38: // up arrow
-          this.value = adjustMonth(currentDate, 1);
-          break;
-        case 39: // right arrow
-          this.value = adjustDate(currentDate, 1);
-          break;
-        case 40: // down arrow
-          this.value = adjustMonth(currentDate, -1);
-          break;
-      }
+    'use strict';
 
-      // If the name of the input element is 'date_', copy the new date value to other date elements
-      if (this.name === 'date_') {
-        let newDateValue = this.value;
-        let otherDateElements = ['doc_date', 'event_date'];
+    // Flag to determine if 'Journal Entry' mode is active
+    let isJournalEntryMode = false;
 
-        for (let j = 0; j < otherDateElements.length; j++) {
-          let otherDateElement = document.getElementsByName(otherDateElements[j])[0];
-          if (otherDateElement) {
-            otherDateElement.value = newDateValue;
-          }
+    // Function to check for 'Journal Entry' mode
+    function checkJournalEntryMode() {
+        const tdElements = document.querySelectorAll('td.titletext');
+        for (const td of tdElements) {
+            if (td.textContent.trim() === 'Journal Entry') {
+                isJournalEntryMode = true;
+                break;
+            }
         }
-      }
-    }
-  }
-  function attachHandlers() {
-    const dateElement = document.getElementsByName('date_')[0];
-    if (dateElement) {
-      dateElement.removeEventListener('keydown', handler);
-      dateElement.addEventListener('keydown', handler);
-    }
-    document.addEventListener('focusin', function(e) {
-      if (e.target.classList.contains('date')) {
-        // Remove the event listener before adding it to ensure it's only added once
-        e.target.removeEventListener('keydown', handler);
-        e.target.addEventListener('keydown', handler);
-      }
-    });
-  }
-
-  function adjustDate(date, days) {
-    date.setDate(date.getDate() + days);
-    return formatDate(date);
-  }
-
-  function adjustMonth(date, months) {
-    let day = date.getDate();
-    date.setMonth(date.getMonth() + months);
-
-    // If the day of the month has changed, set the date to the last day of the previous month
-    if (date.getDate() != day) {
-      date.setDate(0);
     }
 
-    return formatDate(date);
-  }
+    // Function to parse date in MM/DD/YYYY format
+    function parseDate(dateStr) {
+        const [month, day, year] = dateStr.split('/').map(Number);
+        if (!month || !day || !year) return new Date();
+        return new Date(year, month - 1, day);
+    }
 
-  function formatDate(date) {
-    let day = ('0' + date.getDate()).slice(-2);
-    let month = ('0' + (date.getMonth() + 1)).slice(-2);
-    let year = date.getFullYear();
+    // Function to format Date object to MM/DD/YYYY
+    function formatDate(date) {
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        const yyyy = date.getFullYear();
+        return `${mm}/${dd}/${yyyy}`;
+    }
 
-    return month + '/' + day + '/' + year;
-  }
-  setTimeout(function() {
-    attachHandlers();
-  }, 100); // Delay in milliseconds
+    // Function to add or subtract months, adjusting for month length
+    function addMonths(date, months) {
+        const originalDay = date.getDate();
+        const newDate = new Date(date);
+        newDate.setDate(1); // Prevent overflow
+        newDate.setMonth(newDate.getMonth() + months);
+
+        // Determine the maximum days in the new month
+        const maxDay = new Date(newDate.getFullYear(), newDate.getMonth() + 1, 0).getDate();
+        newDate.setDate(Math.min(originalDay, maxDay));
+
+        return newDate;
+    }
+
+    // Function to update date inputs
+    function updateDateInputs(newDateStr, currentInput) {
+        if (isJournalEntryMode) {
+            const dateInputs = document.querySelectorAll('input.date');
+            dateInputs.forEach(input => {
+                input.value = newDateStr;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+        } else {
+            currentInput.value = newDateStr;
+            currentInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }
+
+    // Function to handle keydown events
+    function handleKeyDown(event) {
+        if (!(event.altKey && event.shiftKey)) return;
+
+        const input = event.target;
+        if (!input.classList.contains('date')) return;
+
+        const date = parseDate(input.value);
+        if (!date) return;
+
+        let newDate;
+        switch (event.key) {
+            case 'ArrowLeft':
+                event.preventDefault();
+                newDate = new Date(date);
+                newDate.setDate(newDate.getDate() - 1);
+                break;
+            case 'ArrowRight':
+                event.preventDefault();
+                newDate = new Date(date);
+                newDate.setDate(newDate.getDate() + 1);
+                break;
+            case 'ArrowUp':
+                event.preventDefault();
+                newDate = addMonths(date, -1);
+                break;
+            case 'ArrowDown':
+                event.preventDefault();
+                newDate = addMonths(date, 1);
+                break;
+            default:
+                return;
+        }
+
+        const newDateStr = formatDate(newDate);
+        updateDateInputs(newDateStr, input);
+    }
+
+    // Initialize the script
+    function init() {
+        checkJournalEntryMode();
+
+        // Attach event listeners to all date inputs
+        const dateInputs = document.querySelectorAll('input.date');
+        dateInputs.forEach(input => {
+            input.addEventListener('keydown', handleKeyDown);
+        });
+    }
+
+    // Wait for the DOM to be fully loaded
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
 })();
